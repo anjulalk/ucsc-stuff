@@ -1,0 +1,12 @@
+set x to size of queue
+
+repeat n times
+    dequeue element and set x to it
+    repeat n - 1 times
+        dequeue element and set y to it
+        if x is bigger than y
+            enqueue y
+        else
+            enqueue x
+            set value of x to y
+    enqueue x

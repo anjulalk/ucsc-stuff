@@ -1,0 +1,13 @@
+Only 2 patients are waiting for the doctor.
+They are Zara and Jack.
+
+
+John enqueued
+Kate enqueued
+Shankar enqueued
+John dequeued
+Zara enqueued
+Jack enqueued
+Kate dequeued
+Shankar dequeued
+2 patients are waiting for doctor!
