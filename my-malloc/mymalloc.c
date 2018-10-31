@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <stdbool.h>
 #define MEMSIZE 25000
-#define verboseprintf if (verbose) printf
+#define MINSIZE 4
+#define MEMLIMIT (void*) mem + MEMSIZE - (sizeof(meta) + MINSIZE)
 
-//structure for meta
 typedef struct meta {
     bool hole;
     unsigned int size;
@@ -13,79 +13,78 @@ typedef struct meta {
 char mem[MEMSIZE];
 meta* head = (meta*) mem;
 
-//debug
-bool verbose = true;
 bool init = false;
 
 void *MyMalloc(unsigned int size) {
-    //invalid size
-    if (size < 1) return NULL;
+    meta *m = head, *n;
 
-    //init
+    if (size < 1) return NULL;
     if (!init) {
         head -> hole = true;
-        head -> size = MEMSIZE - sizeof(meta);
+        head -> size = MEMSIZE - sizeof(meta); //25000 - 16 = 24984
         head -> prev = NULL;
         init = true;
     }
 
     //traverse
-    meta *m = head, *n, *_n; //_n = next expected metadata
-    while (true) {
-        if (m -> hole == false || (m -> hole = true && m -> size < size)) {
-            //not suitable
-            _n = (meta*) ((void*) m + sizeof(meta) + m -> size);
-            if ((void*) _n >= (void*) mem + MEMSIZE) return NULL;
+    while ((void*) m <= MEMLIMIT) {
+        //check
+        if (m -> hole == true && m -> size >= size) {    
+            if (m -> size == size) m -> hole = false; //bingo!
+            else if (m -> size > size) {
+                //split
+                n = (meta*) ((void*) m + sizeof(meta) + size); //next meta
+                if ((void*) n <= MEMLIMIT) {
+                        //enough space left for another chunk
+                        n -> hole = true;
+                        n -> size = m -> size - (sizeof(meta) + size); 
+                        n -> prev = m;
+                }
+            
+                m -> hole = false;
+                m -> size = size;
+            }
 
-            //advance
-            m = _n;
-            continue;
+            return (void*) m + sizeof(meta); //success
         }
 
-        if (m -> size == size) m -> hole = false; //bingo!
-        else if (m -> size > size) {
-            //split            
-            n = (meta*) ((void*) m + sizeof(meta) + size);
-
-            n -> hole = true;
-            m -> hole = false;
-            n -> size = m -> size - size - sizeof(meta); 
-            m -> size = size;
-            n -> prev = m;
-        }
-        break;
+        //advance onto next meta block
+        m = (meta*) ((void*) m + sizeof(meta) + m -> size); 
     }
 
-    return (void*) m + sizeof(meta);
+    return NULL; //not enough space
 }
 
 void MyFree(void* address) {
+    meta* m = (void*) address - sizeof(meta);
+    meta *p = m -> prev; //previous block
+    meta *n = (void*) m + sizeof(meta) + m -> size; //next block
+    meta *o = (void*) n + sizeof(meta) + n -> size; //block after next block
+
+    bool p_m_merge = false, m_n_merge = false, o_exist = false;
+
     if (!init) return; //uninitialized
 
-    meta* m = (void*) address - sizeof(meta);
-    meta *n = (void*) m + sizeof(meta) + m -> size;
-    meta *_n = (void*) n + sizeof(meta) + n -> size; //_n = expected metadata after n
-    meta *p = m -> prev;
-
-    bool expand_p = false, expand_n = false, _n_exist = false;
-
-    if (p != NULL && p -> hole == true) expand_p = true;
-    if ((void*) n <= (void*) &mem[MEMSIZE - sizeof(meta) - 1] && n -> hole == true) expand_n = true;
-    if ((void*) _n <= (void*) &mem[MEMSIZE - sizeof(meta) - 1]) _n_exist = true;
-
-    if (!expand_n && !expand_p) m -> hole = true; //bingo again!
-    else if (expand_n) {
+    if (p != NULL && p -> hole == true) p_m_merge = true;
+    if ((void*) n <= MEMLIMIT && n -> hole == true) m_n_merge = true;
+    // if o exist then o -> prev must be set
+    if ((void*) o <= MEMLIMIT) o_exist = true;
+    
+    if (!p_m_merge && !m_n_merge) m -> hole = true; //bingo!!!
+    
+    if (m_n_merge) {
         //expand m over n
-        m -> size = m -> size + sizeof(meta) + n -> size;
+        m -> size += sizeof(meta) + n -> size;
         m -> hole = true;
-
-        if (_n_exist) _n -> prev = m;
-    }
-    else if (expand_p) {
-        //expand p over m
-        p -> size = p -> size + sizeof(meta) + m -> size;   
         
-        if (_n_exist && expand_n) _n -> prev = p;
+        if (o_exist) o -> prev = m;
+    }
+    
+    if (p_m_merge) {
+        //expand p over m
+        p -> size += sizeof(meta) + m -> size;   
+        
+        if (o_exist && m_n_merge) o -> prev = p;
         else n -> prev = p;
     }
 
